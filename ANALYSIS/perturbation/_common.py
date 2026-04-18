@@ -40,6 +40,31 @@ METHOD_IS_EIGENVECTOR = {      # True => eigenvector-based PE (not HKS)
 }
 
 
+def ensure_output_dir(path: Path) -> None:
+    """Create ``path`` if missing.
+
+    On Colab, ``exp*_results`` is often a symlink into Drive. ``Path.mkdir``
+    with ``exist_ok=True`` can still raise :exc:`FileExistsError` on some
+    Python versions when the final component is a symlink; treat an existing
+    symlink (with a live target) as OK.
+    """
+    if path.is_dir():
+        return
+    if path.is_symlink():
+        if not path.exists():
+            raise FileNotFoundError(
+                f"{path} is a broken symlink (Drive target missing). "
+                "Remount Google Drive and re-run the notebook symlink step."
+            )
+        return
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except FileExistsError:
+        if path.is_dir() or path.is_symlink():
+            return
+        raise
+
+
 # ---------------------------------------------------------------------------
 # Model loading
 # ---------------------------------------------------------------------------

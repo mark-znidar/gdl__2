@@ -94,7 +94,7 @@ def run_one_checkpoint(method: str, run_dir: str, test_graphs: C.PCQMGraphs,
 
     seed_tag = Path(run_dir).name
     out_path = OUT_DIR / f"{method}__{seed_tag}.json"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    C.ensure_output_dir(out_path.parent)
     with open(out_path, "w") as f:
         json.dump({"method": method, "run_dir": run_dir, "pe_type": pe_type,
                    "rows": rows}, f)
@@ -189,7 +189,7 @@ def main():
     if args.plot_only and args.no_plot:
         ap.error("cannot combine --plot-only and --no-plot")
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    C.ensure_output_dir(OUT_DIR)
     device = torch.device(args.device)
 
     if not args.plot_only:
