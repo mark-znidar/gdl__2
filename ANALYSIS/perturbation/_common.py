@@ -51,6 +51,28 @@ def _find(run_dir: str, pattern: str) -> str:
     return hits[-1]
 
 
+def _state_dict_from_checkpoint(ckpt: dict, model_state_key: str) -> dict:
+    """Return the inner ``state_dict`` for ``load_state_dict``.
+
+    GraphGym saves under ``MODEL_STATE`` (from PyG). PyTorch Lightning
+    checkpoints use ``state_dict`` at the top level. Accept both.
+    """
+    if model_state_key in ckpt and isinstance(ckpt[model_state_key], dict):
+        return ckpt[model_state_key]
+    sd = ckpt.get("state_dict")
+    if isinstance(sd, dict) and sd:
+        # Lightning / generic; values should be tensors
+        if isinstance(next(iter(sd.values())), torch.Tensor):
+            return sd
+    # Already a flat parameter dict (some export formats)
+    if ckpt and all(isinstance(v, torch.Tensor) for v in ckpt.values()):
+        return ckpt
+    keys = list(ckpt.keys())[:24]
+    raise RuntimeError(
+        f"Checkpoint has no '{model_state_key}' or usable 'state_dict'; "
+        f"top-level keys (sample): {keys}")
+
+
 def _torch_load_checkpoint(path: str, *, map_location="cpu"):
     """Load a Lightning / GraphGym checkpoint dict.
 
@@ -117,7 +139,9 @@ def load_model_and_cfg(run_dir: str, device: torch.device):
     for p in model.parameters(): p.requires_grad_(False)
 
     ckpt = _torch_load_checkpoint(_find_ckpt(run_dir), map_location="cpu")
-    state = ckpt.get(MODEL_STATE, ckpt)
+    if not isinstance(ckpt, dict):
+        raise TypeError(f"Expected checkpoint dict, got {type(ckpt)}")
+    state = _state_dict_from_checkpoint(ckpt, MODEL_STATE)
     first = next(iter(state.keys()))
     if first.startswith("model."):       # stored with graphgym's wrapper prefix
         try:   model.load_state_dict(state)
