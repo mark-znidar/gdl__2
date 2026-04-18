@@ -3,6 +3,27 @@ import os
 import torch
 import logging
 
+
+# PyTorch >= 2.6 defaults torch.load(..., weights_only=True). OGB / PyG
+# processed datasets (e.g. geometric_data_processed.pt) use pickles that need
+# weights_only=False. Safe for locally built data; do not load untrusted files.
+def _patch_torch_load_for_ogb_pyg():
+    parts = torch.__version__.split("+")[0].split(".")
+    major, minor = int(parts[0]), int(parts[1])
+    if (major, minor) < (2, 6):
+        return
+    _real_load = torch.load
+
+    def _load_compat(*args, **kwargs):
+        if "weights_only" not in kwargs:
+            kwargs["weights_only"] = False
+        return _real_load(*args, **kwargs)
+
+    torch.load = _load_compat  # type: ignore[method-assign]
+
+
+_patch_torch_load_for_ogb_pyg()
+
 import graphgps  # noqa, register custom modules
 from graphgps.agg_runs import agg_runs
 from graphgps.optimizer.extra_optimizers import ExtendedSchedulerConfig
