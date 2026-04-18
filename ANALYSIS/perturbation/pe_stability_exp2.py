@@ -20,7 +20,7 @@ Usage:
     python ANALYSIS/perturbation/pe_stability_exp2.py --all
     python ANALYSIS/perturbation/pe_stability_exp2.py --plot-only
 
-Outputs (ANALYSIS/perturbation/exp2_results/):
+Outputs (default ``ANALYSIS/perturbation/exp2_results/``; override with ``--out-dir``):
     <method>__<seed_tag>.json   raw per-graph std
     exp2_bar.png                mean std on exact-degeneracy subset (< 1e-10)
     exp2_scatter.png            per-graph std vs pair-gap, log x
@@ -53,7 +53,7 @@ BATCH_SIZE       = 64
 EIGENSPACE_K     = 21           # search for degeneracies in λ_1..λ_{k-1}
 GAP_EXACT        = 1e-10
 GAP_NEARDEG      = 0.05
-OUT_DIR          = Path("ANALYSIS/perturbation/exp2_results")
+DEFAULT_OUT_DIR  = Path("ANALYSIS/perturbation/exp2_results")
 
 
 # ------------------- candidate graph selection ---------------------------
@@ -130,7 +130,8 @@ def rotate_and_recompute(base: "C.Data", evals: np.ndarray, evecs: np.ndarray,
 
 
 def run_one_checkpoint(method: str, run_dir: str, test_graphs: C.PCQMGraphs,
-                       cands, device: torch.device, rng_seed: int = 0) -> dict:
+                       cands, device: torch.device, out_dir: Path,
+                       rng_seed: int = 0) -> dict:
     print(f"\n[exp2] === {method} :: {run_dir} ===")
     model, cfg, pe_type = C.load_model_and_cfg(run_dir, device)
     print(f"[exp2] loaded model (pe_type={pe_type})")
@@ -142,7 +143,7 @@ def run_one_checkpoint(method: str, run_dir: str, test_graphs: C.PCQMGraphs,
     if not cands_use:
         raise RuntimeError(
             "No candidates left after truncation filter. "
-            "Try --n-graphs larger or delete exp2_results/candidates.npz to re-scan.")
+            "Try --n-graphs larger or delete candidates.npz in the output dir to re-scan.")
 
     rng = default_rng(rng_seed)
     rows: List[dict] = []
@@ -169,7 +170,7 @@ def run_one_checkpoint(method: str, run_dir: str, test_graphs: C.PCQMGraphs,
                   f"{dt / (pos + 1):5.2f}s/graph)")
 
     seed_tag = Path(run_dir).name
-    out_path = OUT_DIR / f"{method}__{seed_tag}.json"
+    out_path = out_dir / f"{method}__{seed_tag}.json"
     C.ensure_output_dir(out_path.parent)
     with open(out_path, "w") as f:
         json.dump({"method": method, "run_dir": run_dir, "pe_type": pe_type,
@@ -262,8 +263,11 @@ def main():
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--run-dirs", nargs="*", default=None)
     ap.add_argument("--n-graphs", type=int, default=N_TARGET_GRAPHS)
+    ap.add_argument("--out-dir", type=Path, default=None,
+                    help="Directory for *.json, candidates.npz, plots "
+                    f"(default: {DEFAULT_OUT_DIR})")
     ap.add_argument("--plot-only", action="store_true",
-                    help="Only aggregate JSONs under OUT_DIR and regenerate plots")
+                    help="Only aggregate JSONs under the output dir and regenerate plots")
     ap.add_argument("--no-plot", action="store_true",
                     help="Run experiment(s) only; skip aggregation/plot (use --plot-only after)")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
@@ -273,12 +277,14 @@ def main():
     if args.plot_only and args.no_plot:
         ap.error("cannot combine --plot-only and --no-plot")
 
-    C.ensure_output_dir(OUT_DIR)
+    out_dir = Path(args.out_dir) if args.out_dir is not None else DEFAULT_OUT_DIR
+
+    C.ensure_output_dir(out_dir)
     device = torch.device(args.device)
 
     if not args.plot_only:
         test_graphs = C.PCQMGraphs.load()
-        cands_cache = OUT_DIR / "candidates.npz"
+        cands_cache = out_dir / "candidates.npz"
         if cands_cache.exists():
             print(f"[exp2] reusing candidate list from {cands_cache}")
             z = np.load(cands_cache, allow_pickle=True)
@@ -292,24 +298,24 @@ def main():
             dirs = args.run_dirs if (args.method == m and args.run_dirs) \
                    else METHOD_RUN_DIRS[m]
             for rd in dirs:
-                run_one_checkpoint(m, rd, test_graphs, cands, device,
+                run_one_checkpoint(m, rd, test_graphs, cands, device, out_dir,
                                    rng_seed=hash((m, rd)) & 0xFFFF)
 
     results: Dict[str, List[dict]] = {}
     if args.no_plot:
         print("[exp2] --no-plot: skipping aggregation and figures.")
         return
-    for path in sorted(OUT_DIR.glob("*.json")):
+    for path in sorted(out_dir.glob("*.json")):
         if path.name in ("exp2_summary.json",): continue
         with open(path) as f:
             payload = json.load(f)
         results.setdefault(payload["method"], []).append(payload)
     if not results:
         print("[exp2] no result json files yet."); return
-    summary = plot_results(results, OUT_DIR)
-    with open(OUT_DIR / "exp2_summary.json", "w") as f:
+    summary = plot_results(results, out_dir)
+    with open(out_dir / "exp2_summary.json", "w") as f:
         json.dump(summary, f, indent=2)
-    print(f"[exp2] wrote {OUT_DIR / 'exp2_summary.json'}")
+    print(f"[exp2] wrote {out_dir / 'exp2_summary.json'}")
 
 
 if __name__ == "__main__":
