@@ -27,16 +27,18 @@ from torch_geometric.data import Batch, Data
 DATA_PT  = "datasets/pcqm4m-v2/processed/geometric_data_processed.pt"
 SPLIT_PT = "datasets/pcqm4m-v2/split_dict.pt"
 
-METHOD_PE_TYPE = {             # codebase PE-type key per method
+METHOD_PE_TYPE = {             # codebase PE-type key per method; None = no PE
     "LapPE":            "LapPE",
     "SignNet-MLP":      "SignNet",
     "SignNet-DeepSets": "SignNet",
     "L-HKS":            "LHKS",
     "fix-L-HKS":        "LHKS",
+    "noPE":             None,
 }
 METHOD_IS_EIGENVECTOR = {      # True => eigenvector-based PE (not HKS)
     "LapPE": True, "SignNet-MLP": True, "SignNet-DeepSets": True,
     "L-HKS": False, "fix-L-HKS": False,
+    "noPE": False,
 }
 
 
@@ -156,15 +158,14 @@ def load_model_and_cfg(run_dir: str, device: torch.device):
     cfg.train.auto_resume = False
     cfg.accelerator = "cuda" if device.type == "cuda" else "cpu"
 
-    # Which PE type should be (re)computed for this method
+    # Which PE type should be (re)computed for this method. ``None`` means
+    # "no positional encoding" (the noPE baseline); callers must handle that.
     pe_type = None
     for key in cfg.keys():
         if key.startswith("posenc_"):
             if getattr(cfg, key).enable:
                 pe_type = key.split("_", 1)[1]
                 break
-    if pe_type is None:
-        raise RuntimeError(f"No posenc_*.enable=True in config for {run_dir}")
 
     model = create_model()
     model.to(device).eval()
@@ -310,8 +311,13 @@ def deltamin_bin(dmin: float) -> str:
 # PE (re)computation
 # ---------------------------------------------------------------------------
 
-def recompute_pe(data: Data, cfg, pe_type: str) -> Data:
-    """Run the codebase's PE preprocessing on ``data`` in place (cloned ok)."""
+def recompute_pe(data: Data, cfg, pe_type: Optional[str]) -> Data:
+    """Run the codebase's PE preprocessing on ``data`` in place (cloned ok).
+
+    ``pe_type = None`` is the noPE baseline: no PE to (re)compute, return as-is.
+    """
+    if pe_type is None:
+        return data
     from graphgps.transform.posenc_stats import compute_posenc_stats
     # Drop stale PE tensors so compute_posenc_stats overwrites cleanly.
     for attr in ("EigVals", "EigVecs", "eigvals_sn", "eigvecs_sn",
@@ -330,9 +336,14 @@ def _get_lap_decomp_stats(evals_np, evects_np, max_freqs, eigvec_norm):
 
 
 def apply_pe_from_decomp(data: Data, evals: np.ndarray, evecs: np.ndarray,
-                         cfg, pe_type: str) -> Data:
+                         cfg, pe_type: Optional[str]) -> Data:
     """Fill PE attributes on ``data`` using the supplied (evals, evecs) in place
-    of a fresh eigendecomposition.  Used by Exp 2 (rotation injection)."""
+    of a fresh eigendecomposition.  Used by Exp 2 (rotation injection).
+
+    ``pe_type = None`` is the noPE baseline: nothing to inject, return as-is.
+    """
+    if pe_type is None:
+        return data
     import torch.nn.functional as F
     N = data.num_nodes
     if pe_type == "LapPE":
@@ -368,7 +379,8 @@ def apply_pe_from_decomp(data: Data, evals: np.ndarray, evecs: np.ndarray,
     return data
 
 
-def pair_within_pe_truncation(pair_idx: int, evals: np.ndarray, cfg, pe_type: str,
+def pair_within_pe_truncation(pair_idx: int, evals: np.ndarray, cfg,
+                               pe_type: Optional[str],
                                k: Optional[int] = None) -> bool:
     """True iff eigenvectors ``pair_idx`` and ``pair_idx+1`` are both inside the
     rotation window of ``k`` modes.
@@ -388,6 +400,8 @@ def pair_within_pe_truncation(pair_idx: int, evals: np.ndarray, cfg, pe_type: st
     ``min(k, n_nonzero_eigs)``.
     """
     if pair_idx < 1:
+        return False
+    if pe_type is None:          # noPE: rotation injection is a no-op (no PE to rotate)
         return False
     if pe_type == "LapPE":
         k_eff = k if k is not None else int(cfg.posenc_LapPE.eigen.max_freqs)

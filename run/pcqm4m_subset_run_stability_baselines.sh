@@ -1,7 +1,10 @@
 #!/bin/bash
-# Train 3 PE-baseline checkpoints on PCQM4Mv2-Subset for the perturbation/stability study:
-#   LapPE, SignNet-MLP, SignNet-DeepSets
+# Train 4 PE-baseline checkpoints on PCQM4Mv2-Subset for the perturbation/stability study:
+#   LapPE, SignNet-MLP, SignNet-DeepSets, noPE
 # One seed each (matches how LHKS/RWSE stability is run in experiments/run_stability.py).
+# noPE is the "no positional encoding" reference; Exp 1 (edge removal) still gives
+# a signal (pure MPNN sensitivity to topology edits), Exp 2 (eigenvector rotation)
+# is trivially zero for it since no PE is computed -- we exclude it from Exp 2 plots.
 #
 # After all 3 finish, remember to:
 #   1) add entries to experiments/run_stability.py -> `specs` list for these
@@ -76,14 +79,20 @@ J=$(submit "pcqm_snds_s${SEED0}" \
     "${OUTBASE}/snds/seed${SEED0}")
 ALL="${ALL}:${J}"; echo "  pcqm_snds_s${SEED0} -> ${J}  (out: ${OUTBASE}/snds/seed${SEED0})"
 
+J=$(submit "pcqm_nope_s${SEED0}" \
+    "configs/GPS/pcqm4m-subset-GPS-noPE.yaml" $SEED0 \
+    "${OUTBASE}/nope/seed${SEED0}")
+ALL="${ALL}:${J}"; echo "  pcqm_nope_s${SEED0} -> ${J}  (out: ${OUTBASE}/nope/seed${SEED0})"
+
 DEPS="${ALL#:}"
 echo ""
-echo "Training jobs (3): $(echo $DEPS | tr ':' ' ')"
+echo "Training jobs (4): $(echo $DEPS | tr ':' ' ')"
 echo ""
 echo "Checkpoints (after training):"
 echo "  LapPE              -> ${OUTBASE}/lappe/seed${SEED0}/pcqm4m-subset-GPS+LapPE/${SEED0}/ckpt/"
 echo "  SignNet-MLP        -> ${OUTBASE}/snmlp/seed${SEED0}/pcqm4m-subset-GPS+SNMLP/${SEED0}/ckpt/"
 echo "  SignNet-DeepSets   -> ${OUTBASE}/snds/seed${SEED0}/pcqm4m-subset-GPS+SNDS/${SEED0}/ckpt/"
+echo "  noPE               -> ${OUTBASE}/nope/seed${SEED0}/pcqm4m-subset-GPS-noPE/${SEED0}/ckpt/"
 echo ""
 echo "Monitor: squeue -u \$USER"
 echo "Logs:    tail -f ${LOGDIR}/pcqm_lappe_s${SEED0}_*.out"

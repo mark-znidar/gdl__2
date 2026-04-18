@@ -1,9 +1,10 @@
 """Experiment 1 - Non-bridge edge removal, stratified by δ_min.
 
-For each of 5 PE methods (LapPE, SignNet-MLP, SignNet-DeepSets, L-HKS,
-fix-L-HKS) on PCQM4Mv2, remove k ∈ {1,2,3} non-bridge edges uniformly at
-random, recompute the PE for the perturbed graph, and measure how much the
-model's scalar prediction varies across 20 independent random perturbations.
+For each of 6 methods (LapPE, SignNet-MLP, SignNet-DeepSets, L-HKS,
+fix-L-HKS, noPE) on PCQM4Mv2, remove k ∈ {1,2,3} non-bridge edges uniformly at
+random, recompute the PE for the perturbed graph (noPE has no PE to recompute,
+so it isolates pure MPNN sensitivity to topology edits), and measure how much
+the model's scalar prediction varies across 20 independent random perturbations.
 
 Results are stratified by each molecule's combinatorial-Laplacian eigenvalue
 gap δ_min (computed at k=8 so the x-axis is comparable across methods) to
@@ -40,6 +41,7 @@ METHOD_RUN_DIRS: Dict[str, List[str]] = {
     "SignNet-DeepSets": ["results_pcqm4m_subset/stability_baselines/snds/seed1"],
     "L-HKS":            ["results_pcqm4m_subset/mlp_ablation/mlp3/seed2"],
     "fix-L-HKS":        ["results_pcqm4m_subset/mlp_ablation/mlp3_fixed/seed5"],
+    "noPE":             ["results_pcqm4m_subset/stability_baselines/nope/seed1"],
 }
 K_REMOVE_LEVELS = (1, 2, 3)
 N_PERTURBATIONS = 20
@@ -141,9 +143,9 @@ def plot_main(agg: dict, out_path: Path) -> None:
                              sharey=True)
     colors = {"LapPE": "#d62728", "SignNet-MLP": "#ff7f0e",
               "SignNet-DeepSets": "#9467bd", "L-HKS": "#1f77b4",
-              "fix-L-HKS": "#17becf"}
+              "fix-L-HKS": "#17becf", "noPE": "#2ca02c"}
     markers = {"LapPE": "o", "SignNet-MLP": "s", "SignNet-DeepSets": "D",
-               "L-HKS": "^", "fix-L-HKS": "v"}
+               "L-HKS": "^", "fix-L-HKS": "v", "noPE": "x"}
     for ax, k in zip(axes, K_REMOVE_LEVELS):
         for method, per_bin in agg.items():
             ys = [per_bin[b].get(k, (float("nan"), 0))[0] for b in bins]

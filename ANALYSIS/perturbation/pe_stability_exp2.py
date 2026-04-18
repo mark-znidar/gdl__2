@@ -42,6 +42,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _common as C
 
 
+# noPE is intentionally **excluded** from this experiment: rotating an eigenbasis
+# the model does not use is a no-op, so every std would be exactly 0 and it would
+# only clutter the scatter / bar plots without adding signal. noPE is still
+# included in Exp 1 (edge removal), where it isolates pure MPNN sensitivity.
 METHOD_RUN_DIRS: Dict[str, List[str]] = {
     "LapPE":            ["results_pcqm4m_subset/stability_baselines/lappe/seed1"],
     "SignNet-MLP":      ["results_pcqm4m_subset/stability_baselines/snmlp/seed1"],
