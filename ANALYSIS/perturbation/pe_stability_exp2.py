@@ -10,6 +10,11 @@ prediction moves across 20 random rotations.
 - HKS-based PEs should be almost bit-invariant under *exact* degeneracy
   (Pythagorean identity) and drift by only O(t·Δλ) under near-degeneracy.
 
+For each checkpoint we only rotate pairs (φ_i, φ_{i+1}) where **both** indices lie in
+that model's truncated basis (``max_freqs`` / ``num_eigvec``). Pairs straddling the
+truncation boundary are skipped so L-HKS is not penalized for eigenvectors outside
+its sum (see ``pair_within_pe_truncation`` in ``_common.py``).
+
 Usage:
     python ANALYSIS/perturbation/pe_stability_exp2.py --method L-HKS --run-dirs results_pcqm4m_subset/mlp_ablation/mlp3/seed2 --no-plot
     python ANALYSIS/perturbation/pe_stability_exp2.py --all
@@ -130,10 +135,19 @@ def run_one_checkpoint(method: str, run_dir: str, test_graphs: C.PCQMGraphs,
     model, cfg, pe_type = C.load_model_and_cfg(run_dir, device)
     print(f"[exp2] loaded model (pe_type={pe_type})")
 
+    cands_use = [t for t in cands
+                 if C.pair_within_pe_truncation(t[1], t[3], cfg, pe_type)]
+    print(f"[exp2] PE truncation filter ({pe_type}): {len(cands_use)}/{len(cands)} "
+          "candidates (both eigenvectors in model's basis)")
+    if not cands_use:
+        raise RuntimeError(
+            "No candidates left after truncation filter. "
+            "Try --n-graphs larger or delete exp2_results/candidates.npz to re-scan.")
+
     rng = default_rng(rng_seed)
     rows: List[dict] = []
     t0 = time.time()
-    for pos, (gi, pair_idx, pair_gap, evals, evecs) in enumerate(cands):
+    for pos, (gi, pair_idx, pair_gap, evals, evecs) in enumerate(cands_use):
         base = test_graphs.get(gi)
         # Baseline PE (theta=0) so we can also report deviation from baseline.
         thetas = rng.uniform(0.0, 2 * np.pi, size=N_ROTATIONS)
@@ -149,9 +163,9 @@ def run_one_checkpoint(method: str, run_dir: str, test_graphs: C.PCQMGraphs,
                      "pred_std":  float(preds.std()),
                      "pred_min":  float(preds.min()),
                      "pred_max":  float(preds.max())})
-        if (pos + 1) % 100 == 0 or pos + 1 == len(cands):
+        if (pos + 1) % 100 == 0 or pos + 1 == len(cands_use):
             dt = time.time() - t0
-            print(f"[exp2] {pos+1:5d}/{len(cands)} ({dt:6.1f}s, "
+            print(f"[exp2] {pos+1:5d}/{len(cands_use)} ({dt:6.1f}s, "
                   f"{dt / (pos + 1):5.2f}s/graph)")
 
     seed_tag = Path(run_dir).name
@@ -261,10 +275,6 @@ def main():
 
     C.ensure_output_dir(OUT_DIR)
     device = torch.device(args.device)
-    if device.type == "cuda" and not torch.cuda.is_available():
-        print("[exp2] WARNING: --device cuda but CUDA is not available (CPU-only "
-              "Colab runtime or CPU-only PyTorch). Using cpu.", flush=True)
-        device = torch.device("cpu")
 
     if not args.plot_only:
         test_graphs = C.PCQMGraphs.load()

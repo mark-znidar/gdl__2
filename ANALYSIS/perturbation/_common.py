@@ -368,6 +368,36 @@ def apply_pe_from_decomp(data: Data, evals: np.ndarray, evecs: np.ndarray,
     return data
 
 
+def pair_within_pe_truncation(pair_idx: int, evals: np.ndarray, cfg, pe_type: str) -> bool:
+    """True iff eigenvectors ``pair_idx`` and ``pair_idx+1`` are both used by this PE.
+
+    Exp 2 rotates a degenerate pair in the full eigenbasis; the PE only **sees** the
+    first few modes (LapPE / SignNet ``max_freqs``, L-HKS ``num_eigvec`` after masking
+    small eigenvalues). Rotating a pair that straddles that cut (e.g. φ₇,φ₈ when only
+    φ₀..φ₇ are in the L-HKS sum) injects φ₉ into the truncated sum via the rotation and
+    unfairly penalizes HKS — so we skip such pairs.
+    """
+    if pair_idx < 1:
+        return False
+    if pe_type == "LapPE":
+        k = int(cfg.posenc_LapPE.eigen.max_freqs)
+        return pair_idx + 1 <= k - 1
+    if pe_type == "SignNet":
+        k = int(cfg.posenc_SignNet.eigen.max_freqs)
+        return pair_idx + 1 <= k - 1
+    if pe_type == "LHKS":
+        ev = torch.from_numpy(np.asarray(evals, dtype=np.float64)).float().flatten()
+        mask = ev >= 1e-8
+        idx_ok = torch.where(mask)[0]
+        num_eigvec = int(cfg.posenc_LHKS.num_eigvec)
+        take = min(num_eigvec, int(idx_ok.numel()))
+        if take < 2:
+            return False
+        used = set(idx_ok[:take].cpu().numpy().tolist())
+        return pair_idx in used and (pair_idx + 1) in used
+    raise ValueError(f"pair_within_pe_truncation: unknown pe_type {pe_type!r}")
+
+
 # ---------------------------------------------------------------------------
 # Inference helpers
 # ---------------------------------------------------------------------------
