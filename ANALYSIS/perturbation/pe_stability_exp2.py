@@ -11,8 +11,9 @@ prediction moves across 20 random rotations.
   (Pythagorean identity) and drift by only O(t·Δλ) under near-degeneracy.
 
 Usage:
-    python ANALYSIS/perturbation/pe_stability_exp2.py --method L-HKS --run-dirs results_pcqm4m_subset/mlp_ablation/mlp3/seed2
+    python ANALYSIS/perturbation/pe_stability_exp2.py --method L-HKS --run-dirs results_pcqm4m_subset/mlp_ablation/mlp3/seed2 --no-plot
     python ANALYSIS/perturbation/pe_stability_exp2.py --all
+    python ANALYSIS/perturbation/pe_stability_exp2.py --plot-only
 
 Outputs (ANALYSIS/perturbation/exp2_results/):
     <method>__<seed_tag>.json   raw per-graph std
@@ -195,7 +196,10 @@ def plot_results(method_seeds: Dict[str, List[dict]], out_dir: Path) -> dict:
         means.append(float(np.mean(vals)) if vals else 0.0)
         sems .append(float(np.std(vals) / max(1, np.sqrt(len(vals)))) if vals else 0.0)
         ns.append(len(vals))
-    bars = ax.bar(methods, means, yerr=sems, capsize=3,
+    # log scale requires strictly positive bar heights
+    eps = 1e-20
+    means_bar = [max(m, eps) for m in means]
+    bars = ax.bar(methods, means_bar, yerr=sems, capsize=3,
                   color=[colors.get(m, "gray") for m in methods])
     ax.set_yscale("log")
     ax.set_ylabel(r"mean prediction std on exact-degeneracy subset ($\delta_{\min}<10^{-10}$)")
@@ -216,7 +220,8 @@ def plot_results(method_seeds: Dict[str, List[dict]], out_dir: Path) -> dict:
         stds = np.array([s for (_, _, s)  in per_method[m]])
         # Plot gaps < 1e-12 at a floor for visibility on log axis.
         g_plot = np.clip(gaps, 1e-16, None)
-        ax.scatter(g_plot, stds, s=10, alpha=0.45, color=colors.get(m, None),
+        s_plot = np.clip(stds, 1e-20, None)
+        ax.scatter(g_plot, s_plot, s=10, alpha=0.45, color=colors.get(m, None),
                    label=m, rasterized=True)
     ax.set_xscale("log"); ax.set_yscale("log")
     ax.set_xlabel(r"pair gap $\lambda_{i+1}-\lambda_i$")
@@ -243,11 +248,16 @@ def main():
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--run-dirs", nargs="*", default=None)
     ap.add_argument("--n-graphs", type=int, default=N_TARGET_GRAPHS)
-    ap.add_argument("--plot-only", action="store_true")
+    ap.add_argument("--plot-only", action="store_true",
+                    help="Only aggregate JSONs under OUT_DIR and regenerate plots")
+    ap.add_argument("--no-plot", action="store_true",
+                    help="Run experiment(s) only; skip aggregation/plot (use --plot-only after)")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap.parse_args()
     if not (args.method or args.all or args.plot_only):
         ap.error("specify --method, --all, or --plot-only")
+    if args.plot_only and args.no_plot:
+        ap.error("cannot combine --plot-only and --no-plot")
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     device = torch.device(args.device)
@@ -272,6 +282,9 @@ def main():
                                    rng_seed=hash((m, rd)) & 0xFFFF)
 
     results: Dict[str, List[dict]] = {}
+    if args.no_plot:
+        print("[exp2] --no-plot: skipping aggregation and figures.")
+        return
     for path in sorted(OUT_DIR.glob("*.json")):
         if path.name in ("exp2_summary.json",): continue
         with open(path) as f:

@@ -148,10 +148,11 @@ def plot_main(agg: dict, out_path: Path) -> None:
         for method, per_bin in agg.items():
             ys = [per_bin[b].get(k, (float("nan"), 0))[0] for b in bins]
             ns = [per_bin[b].get(k, (float("nan"), 0))[1] for b in bins]
-            ax.plot(bins, ys, marker=markers.get(method, "o"),
+            ys_plot = [y if np.isfinite(y) and y > 0 else np.nan for y in ys]
+            ax.plot(bins, ys_plot, marker=markers.get(method, "o"),
                     color=colors.get(method, None), label=f"{method}")
             for x, y, n in zip(bins, ys, ns):
-                if not np.isfinite(y): continue
+                if not np.isfinite(y) or y <= 0: continue
                 ax.annotate(f"n={n}", (x, y), fontsize=6, alpha=0.6,
                             xytext=(0, 4), textcoords="offset points", ha="center")
         ax.set_yscale("log")
@@ -179,10 +180,14 @@ def main():
     ap.add_argument("--n-graphs", type=int, default=N_TARGET_GRAPHS)
     ap.add_argument("--plot-only", action="store_true",
                     help="Skip experiment, only redo aggregation + plot from cache")
+    ap.add_argument("--no-plot", action="store_true",
+                    help="Run experiment(s) only; skip aggregation/plot (use --plot-only after)")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap.parse_args()
     if not (args.method or args.all or args.plot_only):
         ap.error("specify --method, --all, or --plot-only")
+    if args.plot_only and args.no_plot:
+        ap.error("cannot combine --plot-only and --no-plot")
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     device = torch.device(args.device)
@@ -202,6 +207,9 @@ def main():
                                    device, rng_seed=hash((m, rd)) & 0xFFFF)
 
     # --- aggregation / plot ---
+    if args.no_plot:
+        print("[exp1] --no-plot: skipping aggregation and figures.")
+        return
     results_per_method: Dict[str, List[dict]] = {}
     for path in sorted(OUT_DIR.glob("*.json")):
         if path.name in ("exp1_summary.json",): continue
