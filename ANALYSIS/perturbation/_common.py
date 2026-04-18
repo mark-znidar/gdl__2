@@ -51,6 +51,20 @@ def _find(run_dir: str, pattern: str) -> str:
     return hits[-1]
 
 
+def _torch_load_checkpoint(path: str, *, map_location="cpu"):
+    """Load a Lightning / GraphGym checkpoint dict.
+
+    PyTorch >= 2.6 defaults ``torch.load(..., weights_only=True)``, which
+    rejects these files; ``main.py`` patches ``torch.load`` when training,
+    but analysis scripts are often run directly, so we set ``weights_only``
+    explicitly here.
+    """
+    try:
+        return torch.load(path, map_location=map_location, weights_only=False)
+    except TypeError:
+        return torch.load(path, map_location=map_location)
+
+
 def _find_ckpt(run_dir: str) -> str:
     hits = glob.glob(os.path.join(run_dir, "**", "*.ckpt"), recursive=True)
     hits += glob.glob(os.path.join(run_dir, "**", "*.pt"),   recursive=True)
@@ -102,7 +116,7 @@ def load_model_and_cfg(run_dir: str, device: torch.device):
     model.to(device).eval()
     for p in model.parameters(): p.requires_grad_(False)
 
-    ckpt = torch.load(_find_ckpt(run_dir), map_location="cpu")
+    ckpt = _torch_load_checkpoint(_find_ckpt(run_dir), map_location="cpu")
     state = ckpt.get(MODEL_STATE, ckpt)
     first = next(iter(state.keys()))
     if first.startswith("model."):       # stored with graphgym's wrapper prefix
