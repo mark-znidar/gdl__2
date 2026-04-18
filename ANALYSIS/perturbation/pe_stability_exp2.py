@@ -261,6 +261,10 @@ def main():
 
     C.ensure_output_dir(OUT_DIR)
     device = torch.device(args.device)
+    if device.type == "cuda" and not torch.cuda.is_available():
+        print("[exp2] WARNING: --device cuda but CUDA is not available (CPU-only "
+              "Colab runtime or CPU-only PyTorch). Using cpu.", flush=True)
+        device = torch.device("cpu")
 
     if not args.plot_only:
         test_graphs = C.PCQMGraphs.load()
