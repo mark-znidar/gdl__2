@@ -1,0 +1,17 @@
+{
+  "epsilon": 0.05,
+  "n_points_total": 380,
+  "n_points_used_for_correlation": 338,
+  "pearson_log_gap_vs_log_lappe": {
+    "r": -0.18890070901436434,
+    "p": 0.0004802849919479604
+  },
+  "pearson_log_gap_vs_log_hks": {
+    "r": -0.1802572332740724,
+    "p": 0.0008715153999206266
+  },
+  "n_graphs_with_small_gap_lt_0.01": 81,
+  "mean_lappe_small_gap": 0.2312909570411021,
+  "mean_hks_small_gap": 0.10664469663074475,
+  "ratio_lappe_over_hks_small_gap": 2.1687994278978793
+}
