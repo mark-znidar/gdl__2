@@ -51,11 +51,18 @@ def ensure_output_dir(path: Path) -> None:
     if path.is_dir():
         return
     if path.is_symlink():
-        if not path.exists():
-            raise FileNotFoundError(
-                f"{path} is a broken symlink (Drive target missing). "
-                "Remount Google Drive and re-run the notebook symlink step."
-            )
+        if path.exists():
+            return
+        # Broken symlink (Drive unmounted or target folder removed on Drive).
+        tgt = os.readlink(path)
+        print(
+            f"[common] WARNING: removing broken symlink {path} -> {tgt!r}; "
+            "writing to a local directory instead. Remount Drive and re-run the "
+            "notebook symlink step (section 4) for results on MyDrive.",
+            flush=True,
+        )
+        path.unlink()
+        path.mkdir(parents=True, exist_ok=True)
         return
     try:
         path.mkdir(parents=True, exist_ok=True)
