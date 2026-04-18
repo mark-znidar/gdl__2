@@ -11,11 +11,7 @@ show that instability of eigenvector-based PEs grows as δ_min shrinks,
 while HKS stays flat.
 
 Usage:
-    # Run one method at a time (fast iteration, easy parallelism over GPUs):
-    python ANALYSIS/perturbation/pe_stability_exp1.py --method LapPE            \
-        --run-dirs stability_baselines/lappe/seed0 stability_baselines/lappe/seed1
-
-    # Or run all specified methods in a single launch:
+    python ANALYSIS/perturbation/pe_stability_exp1.py --method LapPE --run-dirs results_pcqm4m_subset/stability_baselines/lappe/seed1
     python ANALYSIS/perturbation/pe_stability_exp1.py --all
 
 Outputs (ANALYSIS/perturbation/exp1_results/):
@@ -39,13 +35,11 @@ import _common as C
 
 # ------------------------------ config ------------------------------------
 METHOD_RUN_DIRS: Dict[str, List[str]] = {
-    "LapPE":            ["stability_baselines/lappe/seed0",
-                         "stability_baselines/lappe/seed1"],
-    "SignNet-MLP":      ["stability_baselines/signnet_mlp/seed0"],
-    "SignNet-DeepSets": ["stability_baselines/signnet_ds/seed0"],
-    "L-HKS":            ["stability_baselines/lhks/seed0",
-                         "stability_baselines/lhks/seed1"],
-    "fix-L-HKS":        ["stability_baselines/fix_lhks/seed0"],
+    "LapPE":            ["results_pcqm4m_subset/stability_baselines/lappe/seed1"],
+    "SignNet-MLP":      ["results_pcqm4m_subset/stability_baselines/snmlp/seed1"],
+    "SignNet-DeepSets": ["results_pcqm4m_subset/stability_baselines/snds/seed1"],
+    "L-HKS":            ["results_pcqm4m_subset/mlp_ablation/mlp3/seed2"],
+    "fix-L-HKS":        ["results_pcqm4m_subset/mlp_ablation/mlp3_fixed/seed5"],
 }
 K_REMOVE_LEVELS = (1, 2, 3)
 N_PERTURBATIONS = 20
