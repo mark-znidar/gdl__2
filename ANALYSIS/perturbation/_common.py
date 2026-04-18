@@ -12,7 +12,7 @@ import glob
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import torch
@@ -368,29 +368,39 @@ def apply_pe_from_decomp(data: Data, evals: np.ndarray, evecs: np.ndarray,
     return data
 
 
-def pair_within_pe_truncation(pair_idx: int, evals: np.ndarray, cfg, pe_type: str) -> bool:
-    """True iff eigenvectors ``pair_idx`` and ``pair_idx+1`` are both used by this PE.
+def pair_within_pe_truncation(pair_idx: int, evals: np.ndarray, cfg, pe_type: str,
+                               k: Optional[int] = None) -> bool:
+    """True iff eigenvectors ``pair_idx`` and ``pair_idx+1`` are both inside the
+    rotation window of ``k`` modes.
 
     Exp 2 rotates a degenerate pair in the full eigenbasis; the PE only **sees** the
     first few modes (LapPE / SignNet ``max_freqs``, L-HKS ``num_eigvec`` after masking
     small eigenvalues). Rotating a pair that straddles that cut (e.g. φ₇,φ₈ when only
     φ₀..φ₇ are in the L-HKS sum) injects φ₉ into the truncated sum via the rotation and
     unfairly penalizes HKS — so we skip such pairs.
+
+    Passing ``k`` (recommended: ``k=8`` = min across baselines) forces *all* methods to
+    be tested on the **same** rotation window, removing the SignNet-DeepSets asymmetry
+    (its cfg has ``max_freqs=21``, so without an explicit ``k`` it would be rotated on
+    pairs that are outside the LapPE / L-HKS / SignNet-MLP windows of 8).
+
+    For ``LHKS`` the mask ``λ >= 1e-8`` still applies, so the effective ``k`` is
+    ``min(k, n_nonzero_eigs)``.
     """
     if pair_idx < 1:
         return False
     if pe_type == "LapPE":
-        k = int(cfg.posenc_LapPE.eigen.max_freqs)
-        return pair_idx + 1 <= k - 1
+        k_eff = k if k is not None else int(cfg.posenc_LapPE.eigen.max_freqs)
+        return pair_idx + 1 <= k_eff - 1
     if pe_type == "SignNet":
-        k = int(cfg.posenc_SignNet.eigen.max_freqs)
-        return pair_idx + 1 <= k - 1
+        k_eff = k if k is not None else int(cfg.posenc_SignNet.eigen.max_freqs)
+        return pair_idx + 1 <= k_eff - 1
     if pe_type == "LHKS":
         ev = torch.from_numpy(np.asarray(evals, dtype=np.float64)).float().flatten()
         mask = ev >= 1e-8
         idx_ok = torch.where(mask)[0]
-        num_eigvec = int(cfg.posenc_LHKS.num_eigvec)
-        take = min(num_eigvec, int(idx_ok.numel()))
+        num_eigvec = k if k is not None else int(cfg.posenc_LHKS.num_eigvec)
+        take = min(int(num_eigvec), int(idx_ok.numel()))
         if take < 2:
             return False
         used = set(idx_ok[:take].cpu().numpy().tolist())

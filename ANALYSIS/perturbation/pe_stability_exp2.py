@@ -10,10 +10,12 @@ prediction moves across 20 random rotations.
 - HKS-based PEs should be almost bit-invariant under *exact* degeneracy
   (Pythagorean identity) and drift by only O(t·Δλ) under near-degeneracy.
 
-For each checkpoint we only rotate pairs (φ_i, φ_{i+1}) where **both** indices lie in
-that model's truncated basis (``max_freqs`` / ``num_eigvec``). Pairs straddling the
-truncation boundary are skipped so L-HKS is not penalized for eigenvectors outside
-its sum (see ``pair_within_pe_truncation`` in ``_common.py``).
+For each checkpoint we only rotate pairs (φ_i, φ_{i+1}) where **both** indices lie
+inside a rotation window ``k``. By default ``k = DEFAULT_K_ROTATE[method]`` which is
+8 for LapPE / SignNet-MLP / L-HKS / fix-L-HKS and 21 for SignNet-DeepSets (= each
+method's own ``max_freqs`` / ``num_eigvec``). For a fair cross-method comparison use
+``--k-rotate 8`` so every method is stressed on the same set of pairs (the shared
+k_min = 8 window); see ``pair_within_pe_truncation`` in ``_common.py``.
 
 Usage:
     python ANALYSIS/perturbation/pe_stability_exp2.py --method L-HKS --run-dirs results_pcqm4m_subset/mlp_ablation/mlp3/seed2 --no-plot
@@ -46,6 +48,15 @@ METHOD_RUN_DIRS: Dict[str, List[str]] = {
     "SignNet-DeepSets": ["results_pcqm4m_subset/stability_baselines/snds/seed1"],
     "L-HKS":            ["results_pcqm4m_subset/mlp_ablation/mlp3/seed2"],
     "fix-L-HKS":        ["results_pcqm4m_subset/mlp_ablation/mlp3_fixed/seed5"],
+}
+# Rotation window per method. Default 8 everywhere except SignNet-DeepSets (21).
+# Overridden by --k-rotate (applies to all methods) or --k-rotate-<method>.
+DEFAULT_K_ROTATE: Dict[str, int] = {
+    "LapPE":            8,
+    "SignNet-MLP":      8,
+    "SignNet-DeepSets": 21,
+    "L-HKS":            8,
+    "fix-L-HKS":        8,
 }
 N_ROTATIONS      = 20
 N_TARGET_GRAPHS  = 5000
@@ -131,15 +142,16 @@ def rotate_and_recompute(base: "C.Data", evals: np.ndarray, evecs: np.ndarray,
 
 def run_one_checkpoint(method: str, run_dir: str, test_graphs: C.PCQMGraphs,
                        cands, device: torch.device, out_dir: Path,
-                       rng_seed: int = 0) -> dict:
+                       k_rotate: int, rng_seed: int = 0) -> dict:
     print(f"\n[exp2] === {method} :: {run_dir} ===")
     model, cfg, pe_type = C.load_model_and_cfg(run_dir, device)
-    print(f"[exp2] loaded model (pe_type={pe_type})")
+    print(f"[exp2] loaded model (pe_type={pe_type}, k_rotate={k_rotate})")
 
     cands_use = [t for t in cands
-                 if C.pair_within_pe_truncation(t[1], t[3], cfg, pe_type)]
-    print(f"[exp2] PE truncation filter ({pe_type}): {len(cands_use)}/{len(cands)} "
-          "candidates (both eigenvectors in model's basis)")
+                 if C.pair_within_pe_truncation(t[1], t[3], cfg, pe_type, k=k_rotate)]
+    print(f"[exp2] PE truncation filter ({pe_type}, k={k_rotate}): "
+          f"{len(cands_use)}/{len(cands)} candidates "
+          "(both eigenvectors in first k modes)")
     if not cands_use:
         raise RuntimeError(
             "No candidates left after truncation filter. "
@@ -263,6 +275,13 @@ def main():
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--run-dirs", nargs="*", default=None)
     ap.add_argument("--n-graphs", type=int, default=N_TARGET_GRAPHS)
+    ap.add_argument("--k-rotate", type=int, default=None,
+                    help="Truncation window used to restrict which pairs are rotated. "
+                    "If set, applies uniformly to every method (e.g. 8 to match the "
+                    "smallest baseline window, making the comparison fair across "
+                    "methods). Default: per-method (8 everywhere except "
+                    "SignNet-DeepSets which uses 21). "
+                    "See DEFAULT_K_ROTATE.")
     ap.add_argument("--out-dir", type=Path, default=None,
                     help="Directory for *.json, candidates.npz, plots "
                     f"(default: {DEFAULT_OUT_DIR})")
@@ -297,8 +316,11 @@ def main():
         for m in methods:
             dirs = args.run_dirs if (args.method == m and args.run_dirs) \
                    else METHOD_RUN_DIRS[m]
+            k_m = args.k_rotate if args.k_rotate is not None \
+                  else DEFAULT_K_ROTATE[m]
             for rd in dirs:
                 run_one_checkpoint(m, rd, test_graphs, cands, device, out_dir,
+                                   k_rotate=k_m,
                                    rng_seed=hash((m, rd)) & 0xFFFF)
 
     results: Dict[str, List[dict]] = {}
