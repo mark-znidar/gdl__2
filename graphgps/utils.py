@@ -146,6 +146,12 @@ def make_wandb_name(cfg):
             model_name += f"+LHKS-K{cfg.posenc_LHKS.kernel_times}"
         else:
             model_name += "+LHKS"
+        # Disambiguate MLP PE encoders from Linear / default LHKS ablations.
+        # Example: +LHKS-K8-MLP3  or  +LHKS-MLP3 (K=16)  or  +LHKS-fixed-MLP3
+        mdl = getattr(cfg.posenc_LHKS, "model", "Linear")
+        n_layers = int(getattr(cfg.posenc_LHKS, "layers", 1))
+        if isinstance(mdl, str) and mdl.lower() == "mlp" and n_layers >= 2:
+            model_name += f"-MLP{n_layers}"
 
     # Compose wandb run name.
     name = f"{dataset_name}.{model_name}.r{cfg.run_id}"

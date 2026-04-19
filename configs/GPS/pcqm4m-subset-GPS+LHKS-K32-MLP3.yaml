@@ -1,6 +1,6 @@
-# L-HKS K=16 with 3-layer MLP encoder on PCQM4Mv2-Subset, GPS-small backbone.
-# Ablation: PE encoder depth (vs. Linear baseline; stays within HKS stability proof via Lipschitz composition).
-# Kernel-times sweep (same MLP3 stack, different K): see pcqm4m-subset-GPS+LHKS-K{2,4,8,32}-MLP3.yaml and run_colab/06_run_lhks_mlp3_kernel_times_ablation.ipynb.
+# L-HKS K=32 with 3-layer MLP encoder on PCQM4Mv2-Subset, GPS-small backbone.
+# Kernel-times ablation: identical to pcqm4m-subset-GPS+LHKS-K16-MLP3.yaml except
+# posenc_LHKS.kernel_times (32 vs 16). Same wandb project as other MLP3 runs.
 out_dir: results_pcqm4m_subset
 metric_best: mae
 metric_agg: argmin
@@ -22,7 +22,7 @@ dataset:
   edge_encoder_bn: False
 posenc_LHKS:
   enable: True
-  kernel_times: 16
+  kernel_times: 32
   num_eigvec: 8
   learn_times: True
   freeze_times: False
