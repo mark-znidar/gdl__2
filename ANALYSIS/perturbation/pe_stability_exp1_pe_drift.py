@@ -110,11 +110,18 @@ def aggregate(rows_per_method):
         for r in rows:
             for k, ds in r["per_k"].items():
                 if ds:
-                    buckets[r["bin"]][int(k)].append(float(np.mean(ds)))
-        out[method] = {
-            b: {k: (float(np.mean(v)) if v else float("nan"), len(v))
-                for k, v in kr.items()}
-            for b, kr in buckets.items()}
+                    buckets[r["bin"]][int(k)].append(float(np.nanmean(ds)))
+        per_method = {}
+        for b, kr in buckets.items():
+            per_method[b] = {}
+            for k, v in kr.items():
+                if not v:
+                    per_method[b][k] = (float("nan"), 0)
+                    continue
+                arr = np.asarray(v, dtype=np.float64)
+                per_method[b][k] = (float(np.nanmean(arr)),
+                                    int(np.isfinite(arr).sum()))
+        out[method] = per_method
     return out
 
 
