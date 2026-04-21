@@ -126,34 +126,38 @@ def aggregate(rows_per_method):
 
 
 def plot(agg, out_path):
+    from matplotlib.ticker import MaxNLocator
     colors  = {"LapPE-aligned": "#d62728", "fix-L-HKS-K8": "#17becf"}
     markers = {"LapPE-aligned": "o",       "fix-L-HKS-K8": "v"}
     bins       = ["A", "B", "C", "D"]
     ticklabels = [r"$<10^{-10}$", r"$<0.05$", r"$<0.15$", r"$\geq 0.15$"]
 
+    all_y = [agg[m][b][k][0] for m in agg for b in bins for k in K_REMOVE]
+    finite = [y for y in all_y if np.isfinite(y)]
+    if finite:
+        lo, hi = min(finite), max(finite)
+        pad    = 0.05 * (hi - lo) if hi > lo else 0.1 * max(abs(hi), 1.0)
+        ylim   = (max(0.0, lo - pad), hi + pad)
+    else:
+        ylim = (0.0, 1.0)
+
     fig, axes = plt.subplots(1, len(K_REMOVE), figsize=(12, 3.8), sharey=True)
     for ax, k in zip(axes, K_REMOVE):
         for m, per_bin in agg.items():
             ys = [per_bin[b][k][0] for b in bins]
-            ns = [per_bin[b][k][1] for b in bins]
             ax.plot(bins, [y if np.isfinite(y) else np.nan for y in ys],
                     marker=markers[m], color=colors[m], label=m)
-            for x, y, n in zip(bins, ys, ns):
-                if np.isfinite(y) and y > 0:
-                    ax.annotate(f"n={n}", (x, y), fontsize=6, alpha=0.6,
-                                xytext=(0, 4), textcoords="offset points",
-                                ha="center")
-        ax.set_yscale("log")
         ax.set_title(f"remove {k} edge(s)")
         ax.set_xticks(range(4))
         ax.set_xticklabels(ticklabels, fontsize=8)
-        ax.set_xlabel(r"$\delta_{\min}$ bin (A smallest $\to$ D largest)")
+        ax.set_xlabel(r"$\delta_{\min}$")
+        ax.set_ylim(*ylim)
+        ax.yaxis.set_major_locator(
+            MaxNLocator(nbins=6, steps=[1, 2, 2.5, 5, 10]))
         ax.grid(alpha=0.3)
     axes[0].set_ylabel(
         r"$\frac{1}{n}\sum_v \|PE(v)-PE'(v)\|_2 / \|PE(v)\|_2$")
     axes[-1].legend(fontsize=8)
-    fig.suptitle("LapPE (aligned) vs. fix-L-HKS (K=8) "
-                 "-- PE drift under edge removal")
     fig.tight_layout()
     fig.savefig(out_path, dpi=160)
     print(f"wrote {out_path}")
