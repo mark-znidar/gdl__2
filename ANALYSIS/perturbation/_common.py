@@ -475,12 +475,16 @@ def stratified_subsample(test_graphs: PCQMGraphs, n_target: int, bin_k: int = 8,
 
     If ``skip_trees`` we additionally require >=1 non-bridge edge.
     """
+    import time as _time
     rng = default_rng(seed)
     dmins: List[float] = []
     kept: List[int] = []
-    print(f"[common] Computing δ_min (k={bin_k}) for {len(test_graphs.test_idx):,} "
-          f"test graphs (CPU eigh) ...")
-    for gi in test_graphs.test_idx.tolist():
+    total = len(test_graphs.test_idx)
+    print(f"[common] Computing δ_min (k={bin_k}) for {total:,} "
+          f"test graphs (CPU eigh) ...", flush=True)
+    t0 = _time.time()
+    heartbeat = max(1000, total // 20)  # ~20 progress lines over the full pass
+    for i, gi in enumerate(test_graphs.test_idx.tolist()):
         d = test_graphs.get(gi)
         n = d.num_nodes
         if skip_tiny and n < 3:
@@ -490,6 +494,14 @@ def stratified_subsample(test_graphs: PCQMGraphs, n_target: int, bin_k: int = 8,
                 continue
         _, _, dmin = eig_and_gap(d.edge_index, n, k=bin_k)
         dmins.append(dmin); kept.append(gi)
+        if (i + 1) % heartbeat == 0 or (i + 1) == total:
+            dt   = _time.time() - t0
+            rate = dt / (i + 1)
+            eta  = rate * (total - (i + 1))
+            print(f"[common]   δ_min {i + 1:7,}/{total:,} "
+                  f"(kept {len(kept):,}, {dt:6.1f}s, "
+                  f"{1e3 * rate:5.2f} ms/graph, "
+                  f"ETA {eta / 60:5.1f} min)", flush=True)
     dmins = np.asarray(dmins, dtype=np.float64)
     kept  = np.asarray(kept,  dtype=np.int64)
     bins = np.array([deltamin_bin(d) for d in dmins])

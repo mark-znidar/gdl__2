@@ -351,10 +351,13 @@ def run_one_method(method: str, test_graphs: C.PCQMGraphs,
             "bin":            C.deltamin_bin(float(sample_dmin[gi_pos])),
             "per_k":          per_k,
         })
-        if (gi_pos + 1) % 100 == 0 or gi_pos + 1 == len(sample_ids):
-            dt = time.time() - t0
-            print(f"[exp1-pe] {gi_pos + 1:5d}/{len(sample_ids)} "
-                  f"({dt:6.1f}s, {dt / (gi_pos + 1):5.2f}s/graph)")
+        if (gi_pos + 1) % 50 == 0 or gi_pos + 1 == len(sample_ids):
+            dt   = time.time() - t0
+            rate = dt / (gi_pos + 1)
+            eta  = rate * (len(sample_ids) - (gi_pos + 1))
+            print(f"[exp1-pe] {method}: {gi_pos + 1:5d}/{len(sample_ids)} "
+                  f"({dt:6.1f}s elapsed, {rate:5.2f}s/graph, "
+                  f"ETA {eta / 60:5.1f} min)", flush=True)
 
     out_path = OUT_DIR / f"{method}.json"
     C.ensure_output_dir(out_path.parent)
@@ -463,13 +466,26 @@ def main():
         ap.error("cannot combine --plot-only and --no-plot")
 
     C.ensure_output_dir(OUT_DIR)
+    print(f"[exp1-pe] starting at {time.strftime('%Y-%m-%d %H:%M:%S')} "
+          f"(plot_only={args.plot_only}, n_graphs={args.n_graphs}, "
+          f"methods={list(METHODS.keys())})", flush=True)
 
     bin_stats: Optional[Dict[str, dict]] = None
     if not args.plot_only:
+        t_load = time.time()
+        print(f"[exp1-pe] loading PCQM4Mv2 from {C.DATA_PT} "
+              "(Drive I/O; typically 2-5 min if cold) ...", flush=True)
         test_graphs = C.PCQMGraphs.load()
+        print(f"[exp1-pe] dataset loaded in {time.time() - t_load:.1f}s "
+              f"({len(test_graphs.test_idx):,} valid-split graphs)",
+              flush=True)
+
+        t_strat = time.time()
         sample_ids, sample_dmin, counts = C.stratified_subsample(
             test_graphs, n_target=args.n_graphs, bin_k=8,
             seed=0, skip_trees=True, skip_tiny=True)
+        print(f"[exp1-pe] stratified subsample done in "
+              f"{time.time() - t_strat:.1f}s", flush=True)
         bin_stats = _bin_stats_from_sample(test_graphs, sample_ids, sample_dmin)
 
         to_run = [args.method] if args.method else list(METHODS.keys())
