@@ -129,6 +129,7 @@ def plot(agg, out_path):
     from matplotlib.ticker import MaxNLocator
     colors  = {"LapPE-aligned": "#d62728", "fix-L-HKS-K8": "#17becf"}
     markers = {"LapPE-aligned": "o",       "fix-L-HKS-K8": "v"}
+    labels  = {"LapPE-aligned": "LapPE",   "fix-L-HKS-K8": "F-HKS"}
     bins       = ["A", "B", "C", "D"]
     ticklabels = [r"$<10^{-10}$", r"$<0.05$", r"$<0.15$", r"$\geq 0.15$"]
 
@@ -146,7 +147,7 @@ def plot(agg, out_path):
         for m, per_bin in agg.items():
             ys = [per_bin[b][k][0] for b in bins]
             ax.plot(bins, [y if np.isfinite(y) else np.nan for y in ys],
-                    marker=markers[m], color=colors[m], label=m)
+                    marker=markers[m], color=colors[m], label=labels[m])
         ax.set_title(f"remove {k} edge(s)")
         ax.set_xticks(range(4))
         ax.set_xticklabels(ticklabels, fontsize=8)
