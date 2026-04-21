@@ -14,6 +14,10 @@ from numpy.random import default_rng
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _common as C
 
+import graphgps  # noqa: F401
+from torch_geometric.graphgym.config import cfg as GLOBAL_CFG, set_cfg
+from graphgps.finetuning import set_new_cfg_allowed
+
 METHODS = {
     "LapPE-aligned": dict(
         cfg="configs/GPS/pcqm4m-subset-GPS+LapPE.yaml",
@@ -25,21 +29,18 @@ METHODS = {
 K_REMOVE        = (1, 2, 3)
 N_PERTURBATIONS = 20
 OUT_DIR         = Path("ANALYSIS/perturbation/exp1_pe_drift_results")
-HKS_TIMES       = torch.exp(torch.linspace(math.log(0.01), math.log(50.0), 8))
+HKS_TIMES       = torch.exp(torch.linspace(math.log(0.01), math.log(100.0), 8))
 
 
 def load_cfg(cfg_path: str):
-    import graphgps
-    from torch_geometric.graphgym.config import cfg, set_cfg
-    from graphgps.finetuning import set_new_cfg_allowed
-    set_cfg(cfg)
-    set_new_cfg_allowed(cfg, True)
-    cfg.merge_from_file(cfg_path)
-    cfg.share.dim_in, cfg.share.dim_out, cfg.wandb.use = 9, 1, False
+    set_cfg(GLOBAL_CFG)
+    set_new_cfg_allowed(GLOBAL_CFG, True)
+    GLOBAL_CFG.merge_from_file(cfg_path)
+    GLOBAL_CFG.share.dim_in, GLOBAL_CFG.share.dim_out, GLOBAL_CFG.wandb.use = 9, 1, False
     pe_type = next(
-        k.split("_", 1)[1] for k in cfg.keys()
-        if k.startswith("posenc_") and getattr(cfg, k).enable)
-    return cfg, pe_type
+        k.split("_", 1)[1] for k in GLOBAL_CFG.keys()
+        if k.startswith("posenc_") and getattr(GLOBAL_CFG, k).enable)
+    return GLOBAL_CFG, pe_type
 
 
 def pe_tensor(data, kind: str) -> torch.Tensor:
@@ -55,9 +56,9 @@ def drift(base: torch.Tensor, pert: torch.Tensor, align: bool) -> float:
     if align:
         sign = torch.where((base * pert).sum(0) < 0, -1.0, 1.0).to(pert.dtype)
         pert = pert * sign
-    num = torch.linalg.norm((base - pert).reshape(-1)).item()
-    den = torch.linalg.norm(base.reshape(-1)).item()
-    return num / den if den > 1e-30 else float("nan")
+    num = torch.linalg.norm(base - pert, dim=1)
+    den = torch.linalg.norm(base,        dim=1) + 1e-10
+    return float((num / den).mean().item())
 
 
 def run_method(method, spec, test_graphs, sample_ids, sample_dmin):
@@ -141,7 +142,8 @@ def plot(agg, out_path):
         ax.set_xticklabels(ticklabels, fontsize=8)
         ax.set_xlabel(r"$\delta_{\min}$ bin (A smallest $\to$ D largest)")
         ax.grid(alpha=0.3)
-    axes[0].set_ylabel(r"$\|PE - PE'\|_F / \|PE\|_F$")
+    axes[0].set_ylabel(
+        r"$\frac{1}{n}\sum_v \|PE(v)-PE'(v)\|_2 / \|PE(v)\|_2$")
     axes[-1].legend(fontsize=8)
     fig.suptitle("LapPE (aligned) vs. fix-L-HKS (K=8) "
                  "-- PE drift under edge removal")
@@ -155,6 +157,7 @@ def main():
     ap.add_argument("--n-graphs", type=int, default=5000)
     args = ap.parse_args()
 
+    C.ensure_output_dir(OUT_DIR)
     print("loading PCQM4Mv2 ...", flush=True)
     test_graphs = C.PCQMGraphs.load()
     sample_ids, sample_dmin, counts = C.stratified_subsample(
@@ -167,7 +170,12 @@ def main():
         out = OUT_DIR / f"{method}.json"
         if out.exists():
             print(f"[skip] {method} :: {out} exists")
-            rows_per_method[method] = json.loads(out.read_text())["rows"]
+            rows = json.loads(out.read_text())["rows"]
+            for r in rows:
+                r["per_k"] = {
+                    int(k): (v["drifts"] if isinstance(v, dict) else v)
+                    for k, v in r["per_k"].items()}
+            rows_per_method[method] = rows
         else:
             rows_per_method[method] = run_method(
                 method, spec, test_graphs, sample_ids, sample_dmin)
@@ -175,7 +183,7 @@ def main():
     agg = aggregate(rows_per_method)
     (OUT_DIR / "summary.json").write_text(json.dumps(dict(
         agg=agg, bin_counts=counts,
-        meta=dict(drift_metric="||PE - PE'||_F / ||PE||_F",
+        meta=dict(drift_metric="mean_v ||PE(v) - PE'(v)||_2 / (||PE(v)||_2 + 1e-10)",
                   n_graphs=args.n_graphs,
                   N_PERTURBATIONS=N_PERTURBATIONS,
                   K_REMOVE=list(K_REMOVE),
