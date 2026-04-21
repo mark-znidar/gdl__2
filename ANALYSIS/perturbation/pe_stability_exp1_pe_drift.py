@@ -166,7 +166,7 @@ def plot(agg, out_path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--n-graphs", type=int, default=5000)
+    ap.add_argument("--n-graphs", type=int, default=10000)
     args = ap.parse_args()
 
     C.ensure_output_dir(OUT_DIR)
